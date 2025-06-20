@@ -14,6 +14,7 @@ TdTomato.pos <- RenameIdents(TdTomato.pos, Alveolar1 = "Alveolar", Alveolar2 = "
 # subset only Alveolar, Fibrotic, and Inflammatory labeled cells and organize for later plots
 TdTomato.fibroblast <- subset(TdTomato.pos, idents = c("Alveolar", "Fibrotic", "Inflammatory"))
 Idents(TdTomato.fibroblast) <- factor(Idents(TdTomato.fibroblast), levels = c("Fibrotic", "Inflammatory", "Alveolar"))
+TdTomato.fibroblast$Day <- factor(TdTomato.fibroblast$Day, levels = c("Day21", "Day14", "Day7", "Day0"))
 
 # Normalize subset Seurat object
 TdTomato.fibroblast <- NormalizeData(TdTomato.fibroblast)
