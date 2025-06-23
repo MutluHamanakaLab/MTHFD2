@@ -113,15 +113,15 @@ ggsave("./PATH/TO/DIRECTORY/scDotPlot_TdTomato_MTHFD2_paper_Days_LOW.png", plot,
 # Figure 5D
 scDotplot <- DotPlot(TdTomato.fibroblast, features = MTHFD2_paper_m) + RotatedAxis()
 H <- length(unique(TdTomato.fibroblast@active.ident)) *1.4
-ggsave("./output/plots/2025-03-21/scDotPlot_Tsukui_MTHFD2_TALL.png", scDotplot, width = 4.5, height = H)
+ggsave("./PATH/TO/DIRECTORY/scDotPlot_Tsukui_MTHFD2_TALL.png", scDotplot, width = 4.5, height = H)
 H <- length(unique(level4.seurat_3@active.ident)) *0.7
-ggsave("./output/plots/2025-03-21/scDotPlot_Tsukui_MTHFD2_LOW.png", scDotplot, width = 4.5, height = H)
+ggsave("./PATH/TO/DIRECTORY/scDotPlot_Tsukui_MTHFD2_LOW.png", scDotplot, width = 4.5, height = H)
 
 # Figure S14B
 for (day in names(days)) {
   scDotPlot <- DotPlot(days[[day]], features = MTHFD2_paper_m) + RotatedAxis()
   H <- length(unique(TdTomato.fibroblast@active.ident)) * 1.2
-  ggsave(paste0("./output/plots/2025-05-13/DotPlots_TdTomato/scDotPlot_",day,"_MTHFD2_paper_TALL.png"),scDotPlot,width = W,height = H)
+  ggsave(paste0("./PATH/TO/DIRECTORY/DotPlots_TdTomato/scDotPlot_",day,"_MTHFD2_paper_TALL.png"),scDotPlot,width = W,height = H)
   H <- length(unique(TdTomato.fibroblast@active.ident)) * 0.6
-  ggsave(paste0("./output/plots/2025-05-13/DotPlots_TdTomato/scDotPlot_",day,"_MTHFD2_paper_LOW.png"),scDotPlot,width = W,height = H)
+  ggsave(paste0("./PATH/TO/DIRECTORY/DotPlots_TdTomato/scDotPlot_",day,"_MTHFD2_paper_LOW.png"),scDotPlot,width = W,height = H)
 }
