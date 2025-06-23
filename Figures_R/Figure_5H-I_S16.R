@@ -43,3 +43,14 @@ for (gene in MTHFD2_paper_h) {
   featureplots <- FeaturePlot(level4.seurat_L, features = gene, order = T)
   ggsave(paste0("./PATH/TO/DIRECTORY/scFeaturePlots_Level4_paper_RNA_", gene,".png"), featureplots, width = 3.5, height = 3.5)
 }
+
+# Reset default assay as SCT
+DefaultAssay(level4.seurat_L) <- "SCT"
+
+# Create a marker list
+markers <- c("SCN7A", "AOC3", "FMO2", "CCL2", "SFRP2", "GSN", "CTHRC1", "POSTN", "COL1A1")
+
+for (gene in markers) {
+  featureplots <- FeaturePlot(level4.seurat_L, features = gene, order = T)
+  ggsave(paste0("./PATH/TO/DIRECTORY/scFeaturePlots_Level4_paper_SCT_", gene,".png"), featureplots, width = 3.5, height = 3.5)
+}
