@@ -118,6 +118,8 @@ H <- length(unique(level4.seurat_3@active.ident)) *0.7
 ggsave("./PATH/TO/DIRECTORY/scDotPlot_Tsukui_MTHFD2_LOW.png", scDotplot, width = 4.5, height = H)
 
 # Figure S14B
+W <- length(MTHFD2_paper_m) * 1.1
+
 for (day in names(days)) {
   scDotPlot <- DotPlot(days[[day]], features = MTHFD2_paper_m) + RotatedAxis()
   H <- length(unique(TdTomato.fibroblast@active.ident)) * 1.2
