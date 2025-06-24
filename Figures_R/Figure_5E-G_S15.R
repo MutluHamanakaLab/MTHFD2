@@ -70,6 +70,9 @@ Idents(level3.seurat_L) <- factor(Idents(level3.seurat_L), levels = c("HAS1 High
 # Organize Condition factor for plot
 level3.seurat_L$condition <- factor(level3.seurat_L$condition, levels = c("PF", "Control"))
 
+# Define Gene list
+MTHFD2_paper_h <- c("MTHFD2" ,"ALDH1L2", "MTHFD1L", "MTHFD1")
+
 # Figure S15B
 plot <- DotPlot(level3.seurat_L, features = MTHFD2_paper_h, group.by = "condition") + RotatedAxis()
 W <- length(MTHFD2_paper_h) * 1.3
