@@ -82,9 +82,9 @@ ggsave("./PATH/TO/DIRECTORY/scDotPlot_level3_condition_MTHFD2_paper_LOW.png", pl
 plot <- DotPlot(level3.seurat_L, features = MTHFD2_paper_h) + RotatedAxis()
 W <- length(MTHFD2_paper_h) *1.3
 H <- length(unique(level3.seurat_L@active.ident)) *1.1
-ggsave("./output/2025-05-06/scDotPlot_Level3_MTHFD2_paper_RNA_Norm_TALL.png", width = W, height = H)
+ggsave("./PATH/TO/DIRECTORY/scDotPlot_Level3_MTHFD2_paper_RNA_Norm_TALL.png", width = W, height = H)
 H <- length(unique(level3.seurat_L@active.ident)) *0.55
-ggsave("./output/2025-05-06/scDotPlot_Level3_MTHFD2_paper_RNA_Norm_LOW.png", width = W, height = H)
+ggsave("./PATH/TO/DIRECTORY/scDotPlot_Level3_MTHFD2_paper_RNA_Norm_LOW.png", width = W, height = H)
 
 # ---
 # Feature Plot
