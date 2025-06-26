@@ -1,0 +1,1814 @@
+---
+title: "R Notebook siMTHFD2"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  html_notebook: default
+---
+
+
+```{r load libraries}
+
+library(readr)
+library(readxl)
+library(stringr)
+library(dplyr)
+library(data.table)
+library(tidyverse)
+library(dbplyr)
+library(RColorBrewer)
+library(data.table)
+library(ggplot2)
+
+
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+    #install.packages("BiocManager")
+
+#install.packages("BiocManager")
+library(BiocManager)
+
+#BiocManager::install("Biobase")
+library(Biobase)
+
+#BiocManager::install("tximport")
+library(tximport)
+
+#BiocManager::install("tximportData")
+library(tximportData)
+
+#BiocManager::install("S4Arrays")
+library(S4Arrays)
+
+#BiocManager::install("DelayedArray")
+library(DelayedArray)
+
+#BiocManager::install("tximeta")
+library(tximeta)
+
+#BiocManager::install("Rhtslib")
+library(Rhtslib)
+
+#BiocManager::install("AnnotationDbi")
+library(AnnotationDbi)
+
+#BiocManager::install("GenomicFeatures")
+library(GenomicFeatures)
+
+#BiocManager::install("GenomeInfoDb")
+library(GenomeInfoDb)
+
+#BiocManager::install("GenomicRanges")
+library(GenomicRanges)
+
+#BiocManager::install("BiocGenerics")
+library(BiocGenerics)
+
+#BiocManager::install("parallel")
+library(parallel)
+
+#BiocManager::install("S4Vectors")
+library(S4Vectors)
+
+#BiocManager::install("Rsamtools")
+library(Rsamtools)
+
+#BiocManager::install("stats4")
+library(stats4)
+
+#BiocManager::install("IRanges")
+library(IRanges)
+
+#BiocManager::install("limma")
+library(limma)
+
+#BiocManager::install("edgeR")
+library(edgeR)
+
+#BiocManager::install("DESeq2")
+library(DESeq2)
+
+#BiocManager::install("pheatmap")
+library(pheatmap)
+
+
+#BiocManager::install("TxDb.Hsapiens.UCSC.hg38.knownGene")
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+
+```
+
+
+```{r tximport}
+dir <- system.file("extdata", package = "tximportData")
+list.files(dir)
+```
+
+
+```{r TxDb.HSaphiens}
+#Transcript to gene table 
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+
+k <- keys(txdb, keytype = "TXNAME")
+tx2gene <- AnnotationDbi::select(txdb, k, "GENEID", "TXNAME")
+tx2gene <- na.omit(tx2gene)
+tx2gene
+```
+
+
+```{r check sample files }
+#read the PhenoData for  the data files for selection
+
+setwd("~/siMTHFD2_Analysis")
+getwd()
+
+
+Samples_siMTHFD2 <- read_excel("MTHFD2_SampleList.xlsx")
+samples <- Samples_siMTHFD2
+samples
+files <- (samples$run)
+all(file.exists(files))
+
+files
+```
+
+
+
+
+```{r read counts and summerize to gene levels}
+
+txi <- tximport(files, type = "kallisto", tx2gene = tx2gene)
+
+head(txi$counts)
+head(txi$abundance)
+head(txi$countsFromAbundance)
+
+txi.tx <- tximport(files, type = "kallisto", txOut = TRUE)
+txi.sum <- summarizeToGene(txi.tx, tx2gene)
+#transcripts missing from tx2gene: 201721
+all.equal(txi$counts, txi.sum$counts)
+
+attributes(txi)
+
+# Write the counts to an object
+All_siMTHFD2_data <- txi$counts %>% round() %>% data.frame()
+head(All_siMTHFD2_data)
+
+duplicates <- duplicated(colnames(All_siMTHFD2_data))
+if(any(duplicates)) {
+  print("There are duplicate column names.")
+  print(colnames(All_siMTHFD2_data)[duplicates])  # Prints the names of duplicate columns
+} else {
+  print("All column names are unique.")
+}
+
+# Write the abundance to an object
+read_abundance <- data.frame(txi$abundance)
+
+duplicates <- duplicated(rownames(read_abundance))
+if(any(duplicates)) {
+  print("There are duplicate row names.")
+  print(colnames(read_abundance)[duplicates])  # Prints the names of duplicate columns
+} else {
+  print("All row names are unique.")
+}
+
+
+oldcolnames <- colnames(read_abundance)
+newcolnames <- samples$Name
+#newcolnames <- gsub("\\.tsv","",newcolnames) #getrid of .tsv file extension for columnnames
+
+setnames(read_abundance, old = oldcolnames, new = newcolnames)
+
+
+read_abundance <- rownames_to_column(read_abundance, var = "entrezgene_id")
+head(read_abundance)
+
+
+library(biomaRt)
+
+ensembl <- useMart("ensembl", dataset="hsapiens_gene_ensembl")
+
+#for human dataset = "hsapiens_gene_ensembl"
+
+
+id_map <- getBM(attributes=c('ensembl_gene_id',
+                          'external_gene_name','entrezgene_id'),
+             filters = 'entrezgene_id',
+             values = read_abundance$entrezgene_id,
+             mart = ensembl)
+
+
+
+read_abundance <- read_abundance %>%  mutate(entrezgene_id = as.numeric(entrezgene_id))
+
+read_abundance <- left_join(id_map, read_abundance, by = "entrezgene_id")
+
+read_abundance <- read_abundance %>% rename("external_gene_name"="Symbol")
+
+head(read_abundance)
+rep_Symbol <- dim(read_abundance)[1] - length(unique(read_abundance$Symbol))
+rep_Symbol #3856
+#remove repeating SYMBOLS I just ignore rep symbols since the are not many keeps one copy of the duplicated row
+
+read_abundance <- read_abundance[!duplicated(read_abundance$Symbol), ] #21157 left
+
+write_csv(read_abundance, "siMTHFD2_abundance.csv")
+read_abundance[newcolnames] <- sapply(read_abundance[newcolnames],as.numeric)#set data columns as numeric
+
+sapply(read_abundance, class)
+write_csv(read_abundance, "siMTHFD2_abundance.csv")
+head(read_abundance)
+
+TableOfCounts <- read_abundance[-c(1,3)] #or TableOfCounts <- select(read_abundance,-1,-3)
+head(TableOfCounts)
+write_csv(TableOfCounts, "TableOfCounts_siMTHFD2.txt")
+
+
+#check if there is any NA
+sum(is.na(TableOfCounts))
+
+```
+
+
+```{r Edger for all}
+
+#read/use TableOfCounts for Edger
+
+library(dplyr)
+
+
+#DefineGroups 
+group <- factor(c(samples$Group))
+
+DEGall <- DGEList(counts=TableOfCounts, group=group)
+keep <- filterByExpr(DEGall)
+DEGall <- DEGall[keep,,keep.lib.sizes=FALSE] 
+DEGall <- calcNormFactors(DEGall)
+
+#group design matrix
+design <- model.matrix(~group)
+design
+
+DEGall <- estimateDisp(DEGall,design) # sometimes DEGall is called as NormData
+fit <- glmQLFit(DEGall,design)
+
+
+```
+
+
+
+```{r tsne_Umap_all}
+library(dyndimred)
+library(Rtsne)
+
+et <- exactTest(DEGall)
+topTags(et)
+#Get DEGs using Limma_Egder
+DEGall <- estimateDisp(DEGall,design)
+DEGall <- estimateGLMTagwiseDisp(DEGall, design)
+logcpm <- cpm(DEGall, log=TRUE)
+
+
+t_logcpm <- t(logcpm)
+#NIH_t_logcpm <- t_logcpm[c(1:3,7:9),]
+all_labels=c(samples$Name)
+
+
+
+
+####
+DEGall <- estimateDisp(DEGall, design, robust=TRUE) 
+DEGall$common.dispersion
+sqrt(DEGall$common.dispersion)
+plotBCV(DEGall)
+######
+
+
+library(Rtsne)
+
+
+#ALL tSNE UMAP
+tsne_out <- Rtsne(t_logcpm, pca=TRUE, perplexity=3,theta=0.0, check_duplicates=TRUE)
+
+
+tsne_outY <- tsne_out$Y #run 2 pca=TRUE, perplexity=3
+
+
+GroupName <- unique(samples$Treatment) 
+Color_Values <- unique(samples$Group_color) 
+
+# Create the scatter plot with names on the points
+plot(tsne_out$Y, pch = 19, cex=2, xlab= "comp1", ylab= "comp2",
+          col=samples$Group_color, asp=0) 
+text(tsne_out$Y,
+     labels = all_labels,
+     cex = 1)
+
+# Create the scatter plot
+plot(tsne_out$Y , pch = 19, cex = 2, xlab = "comp1", ylab = "comp2",
+     col = samples$Group_color, asp = 0)
+legend("topleft", legend = GroupName, col = unique(samples$Group_color), pch = 19, cex = 1, xpd = TRUE, box.lwd = 0, bg = "transparent")
+
+
+
+
+library(umap)
+
+
+umap_out <- umap(t_logcpm,
+                method = c("naive"),
+                n_neighbors = 6,
+                n_components = 3,
+                metric= "euclidean",
+                preserve.seed = TRUE,
+                )
+
+All_umap_N <- umap_out$layout
+
+
+plot(All_umap_N , pch = 19, cex = 2, xlab = "comp1", ylab = "comp2",
+     col = samples$Group_color, asp = 0)
+legend("topleft", legend = GroupName, col = unique(samples$Group_color), pch = 19, cex = 0.8, xpd = TRUE, box.lwd = 0, bg = "transparent")
+```
+
+
+
+
+```{r EdgeR }
+
+#read/use TableOfCounts
+ALL_tpm <- TableOfCounts[,-1 ]  # Exclude the "Name" column
+rownames(ALL_tpm) <- TableOfCounts$Symbol
+colnames(ALL_tpm)
+#DefineGroups 
+group <- factor(c(samples$Group))
+
+
+DEG <- DGEList(counts=ALL_tpm, group=group)
+keep <- filterByExpr(DEG)
+DEG <- DEG[keep,,keep.lib.sizes=FALSE] 
+DEG <- calcNormFactors(DEG)
+
+
+#group design matrix
+design <- model.matrix(~0+group)
+design
+Groupnames <- unique(c(samples$Treatment))
+colnames(design) <- Groupnames
+design
+
+
+DEG <- estimateDisp(DEG,design) # sometimes DEG is called as NormData
+fit <- glmQLFit(DEG,design)
+
+#############
+
+qlf.siContr_TGF<- glmQLFTest(fit, contrast=c(-1,1,0,0,0,0))
+topTags(qlf.siContr_TGF) #Coefficient: Coefficient:  -1*siContUT 1*siContTGF 
+summary(dt<-decideTestsDGE(qlf.siContr_TGF, p.value = 0.01))
+
+#       -1*siContUT 1*siContTGF
+#Down              1426
+#NotSig            6147
+#Up                1231
+
+write.csv(qlf.siContr_TGF, "CtrUT_vs_CtrTGFB.csv") 
+
+#############
+
+#contrast groups "siContUT"  "siContTGF" "si9UT"     "si9TGF"    "si11UT"    "si11TGF" 
+#############
+
+#############
+
+qlf.siContr_TGF14<- glmQLFTest(fit, contrast=c(-1,0,0,1,0,0))
+topTags(qlf.siContr_TGF14) # Coefficient:  -1*siContUT 1*si9TGF
+
+write.csv(qlf.siContr_TGF14, "siContUT_si9TGF.csv") 
+
+#############
+
+qlf.siContr_TGF13<- glmQLFTest(fit, contrast=c(-1,0,1,0,0,0))
+topTags(qlf.siContr_TGF13) # Coefficient:  -1*siContUT 1*si9UT
+
+write.csv(qlf.siContr_TGF13, "siContUT_vs_si9UT.csv") 
+
+
+#############
+
+qlf.siContr_TGF24<- glmQLFTest(fit, contrast=c(0,-1,0,1,0,0))
+topTags(qlf.siContr_TGF24) # Coefficient:  -1*siContUT 1*si9UT
+
+write.csv(qlf.siContr_TGF24, "siContTGF_vs_si9TGF.csv") 
+
+
+#############
+qlf.siContr_TGF15<- glmQLFTest(fit, contrast=c(-1,0,0,0,1,0))
+topTags(qlf.siContr_TGF15) # Coefficient:  -1*siContUT 1*si11UT
+
+write.csv(qlf.siContr_TGF15, "siContUT_vs_si11UT.csv") 
+
+
+#############
+qlf.siContr_TGF46<- glmQLFTest(fit, contrast=c(0,0,0,-1,0,1))
+topTags(qlf.siContr_TGF46) # Coefficient:  -1*si9TGF 1*si11TGF 
+
+write.csv(qlf.siContr_TGF46, "si9TGF_vs_si11TGF.csv") 
+
+
+############
+#contrast groups "siContUT"  "siContTGF" "si9UT"     "si9TGF"    "si11UT"    "si11TGF" 
+#############
+
+qlf.siContr_TGF26<- glmQLFTest(fit, contrast=c(0,-1,0,0,0,1))
+topTags(qlf.siContr_TGF26) # Coefficient:  -1*siContTGF 1*si11TGF
+
+write.csv(qlf.siContr_TGF26, "siContTGF_vs_si11TGF.csv") 
+
+
+#############
+#siContUT_si11TGF
+
+
+qlf.siContr_TGF16<- glmQLFTest(fit, contrast=c(-1,0,0,0,0,1))
+topTags(qlf.siContr_TGF16) # Coefficient:  -1*siContUT 1*si11TGF 
+
+write.csv(qlf.siContr_TGF16, "siContUT_vs_si11TGF.csv") 
+
+
+
+
+
+```
+
+
+
+
+```{r  Volcano}
+
+
+#BiocManager::install('EnhancedVolcano')
+library(EnhancedVolcano)
+
+
+CtrUT_vs_CtrTGFB <- read.csv("CtrUT_vs_CtrTGFB.csv", row.names=1)
+
+CtrUT_vs_CtrTGFB_VP  <- EnhancedVolcano(CtrUT_vs_CtrTGFB,
+    lab = rownames(CtrUT_vs_CtrTGFB),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 16.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'CtrUT_vs_CtrTGFB', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("CtrUT_vs_CtrTGFB_VP.png", plot = CtrUT_vs_CtrTGFB_VP, width = plot_width, height = plot_height, limitsize = FALSE)
+
+
+#################
+
+
+siContUT_vs_siContTGF <- read.csv("siContUT_vs_siContTGF.csv", row.names=1)
+
+siContUT_vs_siContTGF_VP  <- EnhancedVolcano(siContUT_vs_siContTGF,
+    lab = rownames(siContUT_vs_siContTGF),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 16.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'siContUT_vs_siContTGF', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("siContUT_vs_siContTGF_VP.png", plot = siContUT_vs_siContTGF_VP, width = plot_width, height = plot_height, limitsize = FALSE)
+
+
+#################
+
+
+siContUT_vs_siContTGF <- read.csv("siContUT_vs_siContTGF.csv", row.names=1)
+
+siContUT_vs_siContTGF_VP  <- EnhancedVolcano(siContUT_vs_siContTGF,
+    lab = rownames(siContUT_vs_siContTGF),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 16.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'siContUT_vs_siContTGF', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("siContUT_vs_siContTGF_VP.png", plot = siContUT_vs_siContTGF_VP, width = plot_width, height = plot_height, limitsize = FALSE)
+
+#################
+
+
+siContUT_si9TGF <- read.csv("siContUT_si9TGF.csv", row.names=1)
+
+siContUT_si9TGF_VP  <- EnhancedVolcano(siContUT_si9TGF,
+    lab = rownames(siContUT_si9TGF),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 16.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'siContUT_si9TGF', 
+    axisLabSize = 24,, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("siContUT_si9TGF_VP.png", plot = siContUT_si9TGF_VP, width = plot_width, height = plot_height, limitsize = FALSE)
+
+#################
+
+
+siContTGF_vs_si9TGF <- read.csv("siContTGF_vs_si9TGF.csv", row.names=1)
+
+siContTGF_vs_si9TGF_VP  <- EnhancedVolcano(siContTGF_vs_si9TGF,
+    lab = rownames(siContTGF_vs_si9TGF),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 16.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'siContTGF_vs_si9TGF', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("siContTGF_vs_si9TGF_VP.png", plot = siContTGF_vs_si9TGF_VP, width = plot_width, height = plot_height, limitsize = FALSE)
+
+#################
+
+
+siContUT_vs_si11UT <- read.csv("siContUT_vs_si11UT.csv", row.names=1)
+
+siContUT_vs_si11UT_VP  <- EnhancedVolcano(siContUT_vs_si11UT,
+    lab = rownames(siContUT_vs_si11UT),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 8.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'siContUT_vs_si11UT', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("siContUT_vs_si11UT_VP.png", plot = siContUT_vs_si11UT_VP, width = plot_width, height = plot_height, limitsize = FALSE)
+
+#################
+
+
+si9TGF_vs_si11TGF <- read.csv("si9TGF_vs_si11TGF.csv", row.names=1)
+
+si9TGF_vs_si11TGF_VP  <- EnhancedVolcano(si9TGF_vs_si11TGF,
+    lab = rownames(si9TGF_vs_si11TGF),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 8.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'si9TGF_vs_si11TGF', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("si9TGF_vs_si11TGF_VP.png", plot = si9TGF_vs_si11TGF_VP, width = plot_width, height = plot_height, limitsize = FALSE)
+
+#################
+
+
+siContTGF_vs_si11TGF <- read.csv("siContTGF_vs_si11TGF.csv", row.names=1)
+
+siContTGF_vs_si11TGF_VP  <- EnhancedVolcano(siContTGF_vs_si11TGF,
+    lab = rownames(siContTGF_vs_si11TGF),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 8.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'siContTGF_vs_si11TGF', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("siContTGF_vs_si11TGF_VP.png", plot = siContTGF_vs_si11TGF_VP, width = plot_width, height = plot_height, limitsize = FALSE)
+
+
+#################
+
+
+siContUT_vs_si9UT <- read.csv("siContUT_vs_si9UT.csv", row.names=1)
+
+siContUT_vs_si9UT_VP  <- EnhancedVolcano(siContUT_vs_si9UT,
+    lab = rownames(siContUT_vs_si9UT),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 8.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'siContUT_vs_si9UT', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25) )
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("siContUT_vs_si9UT_VP.png", plot = siContUT_vs_si9UT_VP, width = plot_width, height = plot_height, limitsize = FALSE)
+
+
+#################
+
+
+siContUT_vs_si11TGF <- read.csv("siContUT_vs_si11TGF.csv", row.names=1)
+
+siContUT_vs_si11TGF_VP  <- EnhancedVolcano(siContUT_vs_si11TGF,
+    lab = rownames(siContUT_vs_si11TGF),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =2.0,
+    pointSize = 4.0,
+    labSize = 8.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'siContUT_vs_si11TGF', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("siContUT_vs_si11TGF_VP.png", plot = siContUT_vs_si11TGF_VP, width = plot_width, height = plot_height, limitsize = FALSE)
+
+
+```
+
+
+
+
+
+```{r counts.in for heatmap}
+library(pheatmap)
+
+counts.in <- TableOfCounts[,-1]
+rownames(counts.in) <- TableOfCounts$Symbol
+
+```
+
+```{r HeatMap siMTHFD2 }
+
+
+head(counts.in)
+colnames(counts.in)
+
+counts.metadata<- data.frame(
+  dataset= c (colnames(counts.in)), 
+  Treatment = c(Samples_siMTHFD2$Treatment),
+   stringsAsFactors = FALSE)
+
+
+
+group_HM <- counts.metadata$Treatment ## sample #
+y_HM <- DGEList(counts=counts.in, genes=row.names.data.frame(counts.in), group=group_HM)
+# Low count removal
+keep_HM <- rowSums(cpm(y_HM)>1) >= 1
+table(keep_HM)
+y_HM <- y_HM[keep_HM, , keep.lib.sizes=FALSE]
+y_HM <- calcNormFactors(y_HM, method="TMM")
+counts_HM <- as.matrix(y_HM$counts)
+logCPM_HM <- cpm(counts_HM, prior.count=1, log=TRUE) #normalization using cpm here
+ZScore_HM <- t(scale(t(logCPM_HM)))
+ZScore_HM <- as.data.frame(ZScore_HM)
+
+
+Sig_HM  <- subset.data.frame(CtrUT_vs_CtrTGFB  , abs(logFC) >= 4.15 & PValue<0.01)#Top 100 DEG
+Sig_HM  <- rownames_to_column(Sig_HM, "Symbol")
+
+ctrSymbol <- c(Sig_HM$Symbol)
+
+Sig_HM_all  <- subset.data.frame(CtrUT_vs_CtrTGFB ,PValue<0.01)#Top 100 DEG
+Sig_HM_all  <- rownames_to_column(Sig_HM_all, "Symbol")
+
+ctrSymbol_all <- c(Sig_HM_all$Symbol)
+
+
+
+Sig_HM  <- subset.data.frame(CtrUT_vs_CtrTGFB  , abs(logFC) >= 4.15 & PValue<0.01)#Top 100 DEG
+Sig_HM  <- rownames_to_column(Sig_HM, "Symbol")
+
+ctrSymbol <- c(Sig_HM$Symbol)
+
+
+Sig_HM_100  <- subset.data.frame(CtrUT_vs_CtrTGFB  , abs(logFC) >= 3.39 & PValue<0.01)#Top 100 DEG
+Sig_HM_100  <- rownames_to_column(Sig_HM_100, "Symbol")
+
+ctrSymbol_100 <- c(Sig_HM_100$Symbol)
+
+
+sig.zscore <- ZScore_HM[ctrSymbol_all  ,]#change for each cluster
+sig.zscore.mat <- as.matrix(sig.zscore)
+
+sig.zscore.mat <- sig.zscore.mat[complete.cases(sig.zscore.mat),]
+
+
+heat.annotation <- data.frame(counts.metadata[ ,2])
+colnames(heat.annotation) <- "Treatment"
+row.names(heat.annotation) <- counts.metadata[ ,1]
+nrow(sig.zscore.mat)
+
+d.colnames <- c(counts.metadata[,1])
+colnames(sig.zscore.mat) <- d.colnames
+
+
+ann.colors <- list(Treatment= c(`siContUT` = "pink", `siCtr_TGFβ` = "red",`si9UT` = "gold", `si9_TGFβ` = "brown",`si11UT` = "cyan2", `si11_TGFβ` = "blue" ))
+
+newnames <- lapply(
+  rownames(sig.zscore.mat),
+  function(x) bquote(italic(.(x)))) ## italicizes
+
+
+heatmap_all<- pheatmap(sig.zscore.mat ,
+                         annotation_col = heat.annotation, 
+                         cluster_cols = FALSE,
+                         main="",
+                         #border_color = NA,
+                         annotation_colors = ann.colors,
+                         show_colnames = FALSE,
+                         labels_row = as.expression(newnames),
+                         fontsize_row = 6,
+                         #cutree_rows = 10,
+                         
+)
+
+heatmap_all <- pheatmap(sig.zscore.mat,
+                         annotation_col = heat.annotation, 
+                         cluster_cols = FALSE,
+                         cluster_rows = TRUE,  # Perform row clustering
+                         #treeheight_row = 0,  # Hide row dendrogram
+                         main = "",
+                         annotation_colors = ann.colors,
+                         show_colnames = FALSE,
+                         show_rownames = FALSE,,  # Keep row labels
+                         fontsize_row = 6
+)
+
+
+
+
+
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("heatmap_all.png", plot = heatmap_all, width = plot_width, height = plot_height, limitsize = FALSE)
+
+
+hc <-heatmap_top50$tree_row
+lbl <- sort(cutree(hc, 1))
+
+sink("heatmap_top50.txt")
+print(lbl)
+sink()
+
+
+
+
+
+```
+
+```{r Metabolic genes}
+
+
+MetabolicGeneSets <- read_excel("~/MetabolicGeneSets.xlsx")
+
+
+colnames(MetabolicGeneSets)
+
+
+OxPhos_GO_BP_Symbol <- c(MetabolicGeneSets$OxPhos_GO_BP_Symbol)
+
+OxPhos_KEGG_Symbol <- c(MetabolicGeneSets$OxPhos_KEGG_Symbol)
+
+Glycolysis_KEGG_Symbol <- c(MetabolicGeneSets$Glycolysis_KEGG_Symbol)
+
+Glycolysis_Reactome <- c(MetabolicGeneSets$Glycolysis_Reactome)
+
+Glycolysis_HumanCyc <- c(MetabolicGeneSets$Glycolysis_HumanCyc)
+
+
+
+
+sig.zscore <- ZScore_HM[Glycolysis_HumanCyc  ,]#change for each cluster
+sig.zscore.mat <- as.matrix(sig.zscore)
+
+
+sig.zscore.mat <- sig.zscore.mat[complete.cases(sig.zscore.mat),]
+
+
+heat.annotation <- data.frame(counts.metadata[ ,2])
+colnames(heat.annotation) <- "Treatment"
+row.names(heat.annotation) <- counts.metadata[ ,1]
+nrow(sig.zscore.mat)
+
+d.colnames <- c(counts.metadata[,1])
+colnames(sig.zscore.mat) <- d.colnames
+
+
+ann.colors <- list(Treatment= c(`siContUT` = "pink", `siCtr_TGFβ` = "red",`si9UT` = "gold", `si9_TGFβ` = "brown",`si11UT` = "cyan2", `si11_TGFβ` = "blue" ))
+
+newnames <- lapply(
+  rownames(sig.zscore.mat),
+  function(x) bquote(italic(.(x)))) ## italicizes
+
+
+heatmap<- pheatmap(sig.zscore.mat ,
+                         annotation_col = heat.annotation, 
+                         cluster_cols = FALSE,
+                         main="",
+                         #border_color = NA,
+                         annotation_colors = ann.colors,
+                         show_colnames = FALSE,
+                         labels_row = as.expression(newnames),
+                         fontsize_row = 6,
+                         #cutree_rows = 10,
+                         
+)
+
+
+
+
+# Save the plot using ggsave
+ggsave("OxPhos_GO_BP_Symbol.png", plot = heatmap, width = plot_width, height = plot_height, limitsize = FALSE)
+ggsave("OxPhos_KEGG_Symbol.png", plot = heatmap, width = plot_width, height = plot_height, limitsize = FALSE)
+
+
+ggsave("Glycolysis_KEGG_Symbol.png", plot = heatmap, width = plot_width, height = plot_height, limitsize = FALSE)
+ggsave("Glycolysis_Reactome.png", plot = heatmap, width = plot_width, height = plot_height, limitsize = FALSE)
+ggsave("Glycolysis_HumanCyc.png", plot = heatmap, width = plot_width, height = plot_height, limitsize = FALSE)
+
+
+```
+
+```{r migration}
+
+
+Migr_contr_GeneSets <- read_excel("~/siMTHFD2_Analysis/geneSets/siMTHFD2_Migr_contr.xlsx")
+
+
+colnames(Migr_contr_GeneSets)
+
+
+SYMBOL_regulation_of_fibroblast_migration <- c(Migr_contr_GeneSets$SYMBOL_regulation_of_fibroblast_migration)
+
+SYMBOL_GO_BP_Human <- c(Migr_contr_GeneSets$SYMBOL_GO_BP_Human)
+
+SYMBOL_GO_BP_Harmonize_regulation_migration <- c(Migr_contr_GeneSets$SYMBOL_GO_BP_Harmonize_regulation_migration)
+
+SYMBOL_GO_BP_Harmonize_muscle_contraction <- c(Migr_contr_GeneSets$SYMBOL_GO_BP_Harmonize_muscle_contraction)
+
+
+
+
+
+
+sig.zscore <- ZScore_HM[SYMBOL_GO_BP_Harmonize_muscle_contraction  ,]#change for each cluster
+sig.zscore.mat <- as.matrix(sig.zscore)
+
+
+sig.zscore.mat <- sig.zscore.mat[complete.cases(sig.zscore.mat),]
+
+
+heat.annotation <- data.frame(counts.metadata[ ,2])
+colnames(heat.annotation) <- "Treatment"
+row.names(heat.annotation) <- counts.metadata[ ,1]
+nrow(sig.zscore.mat)
+
+d.colnames <- c(counts.metadata[,1])
+colnames(sig.zscore.mat) <- d.colnames
+
+
+ann.colors <- list(Treatment= c(`siContUT` = "pink", `siCtr_TGFβ` = "red",`si9UT` = "gold", `si9_TGFβ` = "brown",`si11UT` = "cyan2", `si11_TGFβ` = "blue" ))
+
+newnames <- lapply(
+  rownames(sig.zscore.mat),
+  function(x) bquote(italic(.(x)))) ## italicizes
+
+
+heatmap<- pheatmap(sig.zscore.mat ,
+                         annotation_col = heat.annotation, 
+                         cluster_cols = FALSE,
+                         main="",
+                         #border_color = NA,
+                         annotation_colors = ann.colors,
+                         show_colnames = FALSE,
+                         labels_row = as.expression(newnames),
+                         fontsize_row = 6,
+                         #cutree_rows = 10,
+                         
+)
+
+
+
+
+# Save the plot using ggsave
+ggsave("SYMBOL_regulation_of_fibroblast_migration.png", plot = heatmap, width = plot_width, height = plot_height, limitsize = FALSE)
+
+ggsave("SYMBOL_GO_BP_Human.png", plot = heatmap, width = plot_width, height = plot_height, limitsize = FALSE)
+
+
+ggsave("SYMBOL_GO_BP_Harmonize_regulation_migration.png", plot = heatmap, width = plot_width, height = plot_height, limitsize = FALSE)
+ggsave("SYMBOL_GO_BP_Harmonize_muscle_contraction.png", plot = heatmap, width = plot_width, height = plot_height, limitsize = FALSE)
+
+
+
+```
+
+#############
+MITOCHONDRIA GENE EXP
+
+#######################
+
+```{r tx2gene_MT}
+library(biomaRt)
+
+# Connect to Ensembl
+ensembl <- useEnsembl(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+
+# Get transcript-to-gene mappings, including mitochondrial genes
+tx2gene_MT <- getBM(
+  attributes = c('ensembl_transcript_id', 'ensembl_gene_id', 'hgnc_symbol', 'chromosome_name'),
+  filters = 'chromosome_name',
+  values = c('MT'),  # "MT" refers to mitochondrial chromosome
+  mart = ensembl
+)
+
+# Check if mitochondrial genes are present
+head(tx2gene_MT)
+
+
+
+library(tximport)
+
+# Import Kallisto counts while ignoring transcript version numbers
+txi_MIT <- tximport(files, 
+                    type = "kallisto", 
+                    tx2gene = tx2gene_MT[, c("ensembl_transcript_id", "ensembl_gene_id")],
+                    ignoreTxVersion = TRUE)
+
+
+# Check if mitochondrial genes are present
+head(txi_MIT$counts)
+
+
+
+# Write the abundance to an object
+read_abundance_MIT <- data.frame(txi_MIT$abundance)
+
+duplicates <- duplicated(rownames(read_abundance_MIT))
+if(any(duplicates)) {
+  print("There are duplicate row names.")
+  print(colnames(read_abundance_MIT)[duplicates])  # Prints the names of duplicate columns
+} else {
+  print("All row names are unique.")
+}
+
+
+oldcolnames_MIT <- colnames(read_abundance_MIT)
+newcolnames <- samples$Name
+#newcolnames <- gsub("\\.tsv","",newcolnames) #getrid of .tsv file extension for columnnames
+
+setnames(read_abundance_MIT, old = oldcolnames_MIT, new = newcolnames)
+
+
+read_abundance_MIT <- rownames_to_column(read_abundance_MIT, var = "ensembl_gene_id")
+head(read_abundance_MIT)
+
+
+library(biomaRt)
+ensembl <- useEnsembl(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+ensembl <- useMart("ensembl", dataset="hsapiens_gene_ensembl")
+
+#for human dataset = "hsapiens_gene_ensembl"
+
+
+read_abundance_MIT <- left_join(tx2gene_MT, read_abundance_MIT, by = "ensembl_gene_id")
+
+read_abundance_MIT <- read_abundance_MIT %>% rename("hgnc_symbol"="Symbol")
+
+head(read_abundance_MIT)
+rep_Symbol <- dim(read_abundance_MIT)[1] - length(unique(read_abundance_MIT$Symbol))
+rep_Symbol #0
+#remove repeating SYMBOLS I just ignore rep symbols since the are not many keeps one copy of the duplicated row
+
+read_abundance_MIT <- na.omit(read_abundance_MIT)
+
+
+
+TableOfCounts_MIT <- read_abundance_MIT[, -c(1,2,4)] #or TableOfCounts <- select(read_abundance,-1,-3)
+head(TableOfCounts_MIT)
+write_csv(TableOfCounts_MIT, "TableOfCounts_MIT_siMTHFD2.txt")
+
+
+#check if there is any NA
+sum(is.na(TableOfCounts_MIT))
+
+
+
+
+```
+
+```{r MitoGenes}
+
+library(pheatmap)
+
+counts.in_MIT <- TableOfCounts_MIT[,-1]
+rownames(counts.in_MIT) <- TableOfCounts_MIT$Symbol
+
+head(counts.in_MIT)
+colnames(counts.in_MIT)
+
+counts.metadata_MIT<- data.frame(
+  dataset= c (colnames(counts.in_MIT)), 
+  Treatment = c(Samples_siMTHFD2$Treatment),
+   stringsAsFactors = FALSE)
+
+
+
+group_MIT <- counts.metadata_MIT$Treatment ## sample #
+y_MIT <- DGEList(counts=counts.in_MIT, genes=row.names.data.frame(counts.in_MIT), group=group_MIT)
+# Low count removal
+keep_MIT <- rowSums(cpm(y_MIT)>1) >= 1
+table(keep_MIT)
+y_MIT <- y_MIT[keep_MIT, , keep.lib.sizes=FALSE]
+y_MIT <- calcNormFactors(y_MIT, method="TMM")
+counts_MIT <- as.matrix(y_MIT$counts)
+logCPM_MIT <- cpm(counts_MIT, prior.count=1, log=TRUE) #normalization using cpm here
+ZScore_MIT <- t(scale(t(logCPM_MIT)))
+ZScore_MIT <- as.data.frame(ZScore_MIT)
+
+
+
+Mito_genes<- read_excel("~/siMTHFD2_Analysis/geneSets/Mito_genes.xlsx")
+
+
+SYMBOL_Mito <- c(Mito_genes$Symbol)
+
+
+
+sig.zscore_MIT <- ZScore_MIT[SYMBOL_Mito  ,]#change for each cluster
+sig.zscore.mat_MIT  <- as.matrix(sig.zscore_MIT )
+
+
+sig.zscore.mat_MIT  <- sig.zscore.mat_MIT [complete.cases(sig.zscore.mat_MIT ),]
+
+
+heat.annotation_MIT  <- data.frame(counts.metadata_MIT[ ,2])
+colnames(heat.annotation_MIT) <- "Treatment"
+row.names(heat.annotation_MIT) <- counts.metadata_MIT[ ,1]
+nrow(sig.zscore.mat_MIT)
+
+d.colnames <- c(counts.metadata_MIT[,1])
+colnames(sig.zscore.mat_MIT) <- d.colnames
+
+
+ann.colors <- list(Treatment= c(`siContUT` = "pink", `siCtr_TGFβ` = "red",`si9UT` = "gold", `si9_TGFβ` = "brown",`si11UT` = "cyan2", `si11_TGFβ` = "blue" ))
+
+newnames <- lapply(
+  rownames(sig.zscore.mat_MIT),
+  function(x) bquote(italic(.(x)))) ## italicizes
+
+
+heatmap_MIT<- pheatmap(sig.zscore.mat_MIT ,
+                         annotation_col = heat.annotation, 
+                         cluster_cols = FALSE,
+                         main="",
+                         #border_color = NA,
+                         annotation_colors = ann.colors,
+                         show_colnames = FALSE,
+                         labels_row = as.expression(newnames),
+                         fontsize_row = 6,
+                         #cutree_rows = 10,
+                         
+)
+
+
+
+
+# Save the plot using ggsave
+ggsave("MitoGenes.png", plot = heatmap, width = plot_width, height = plot_height, limitsize = FALSE)
+
+
+
+
+
+```
+
+colnames(ALL_tpm)
+ [1] "siContUT1"  "siContUT2"  "siContUT3"  "siContTGF1" "siContTGF2" "siContTGF3"
+ [7] "si9UT1"     "si9UT2"     "si9UT3"     "si9TGF1"    "si9TGF2"    "si9TGF3"   
+[13] "si11UT1"    "si11UT2"    "si11UT3"    "si11TGF1"   "si11TGF2"   "si11TGF3" 
+
+
+```{r EdgeR sicombined }
+
+#read/use TableOfCounts
+ALL_tpm <- TableOfCounts[,-1 ]  # Exclude the "Name" column
+rownames(ALL_tpm) <- TableOfCounts$Symbol
+
+
+#DefineGroups 
+group <- factor(c(samples$Group_Alt))
+
+
+DEG <- DGEList(counts=ALL_tpm, group=group)
+keep <- filterByExpr(DEG)
+DEG <- DEG[keep,,keep.lib.sizes=FALSE] 
+DEG <- calcNormFactors(DEG)
+
+
+#group design matrix
+design <- model.matrix(~0+group)
+design
+Groupnames <- unique(c(samples$Treatment_Alt))
+colnames(design) <- Groupnames
+design
+
+
+DEG <- estimateDisp(DEG,design) # sometimes DEG is called as NormData
+fit <- glmQLFit(DEG,design)
+
+
+
+qlf.ctrTGF_siTGF<- glmQLFTest(fit, contrast=c(0,-1,0,1))
+topTags(qlf.ctrTGF_siTGF) #Coefficient: -1*Ctr_TGF 1*siKD_TGF 
+summary(dt<-decideTestsDGE(qlf.ctrTGF_siTGF, p.value = 0.05))
+
+#       -1*siContUT 1*siContTGF
+#Down             1
+#NotSig            8803
+#Up              0
+
+write.csv(qlf.ctrTGF_siTGF, "CtrTGF_vs_siTGFB.csv") 
+
+
+qlf.wt_wtTGF<- glmQLFTest(fit, contrast=c(-1,1,0,0))
+topTags(qlf.wt_wtTGF) #Coefficient: Coefficient:  -1*Ctr 1*Ctr_TGF 
+summary(dt<-decideTestsDGE(qlf.wt_wtTGF, p.value = 0.05))
+
+#       -1*Ctr 1*Ctr_TGF
+#Down               1795
+#NotSig             5435
+#Up                 1574
+
+write.csv(qlf.wt_wtTGF, "wt_vs_wtTGF.csv") 
+
+
+qlf.si_siTGF<- glmQLFTest(fit, contrast=c(0,0,-1,1))
+topTags(qlf.si_siTGF) #Coefficient: Coefficient:  -1*siKD 1*siKD_TGF
+summary(dt<-decideTestsDGE(qlf.si_siTGF, p.value = 0.05))
+
+#       -1*siKD 1*siKD_TGF
+#Down               2263
+#NotSig             4344
+#Up                 2197
+
+write.csv(qlf.si_siTGF, "si_vs_siTGF.csv") 
+
+
+
+qlf.wt_vs_siTGF<- glmQLFTest(fit, contrast=c(-1,0,0,1))
+topTags(qlf.wt_vs_siTGF) #Coefficient: -1*Ctr 1*siKD_TGF 
+summary(dt<-decideTestsDGE(qlf.wt_vs_siTGF, p.value = 0.05))
+
+#       -1*Ctr 1*siKD_TGF
+#Down                2001
+#NotSig              4991
+#Up                  1812
+
+
+write.csv(qlf.wt_vs_siTGF, "wt_vs_siTGF.csv") 
+
+
+#contrast=c(0,-1,0,1) -> CtrTGF_vs_siTGFB.csv
+#contrast=c(-1,1,0,0) -> wt_vs_wtTGF.csv
+#contrast=c(0,0,-1,1) -> si_vs_siTGF.csv
+#contrast=c(-1,0,0,1) -> wt_vs_siTGF.csv
+
+
+```
+
+
+
+```{r}
+#################
+
+Ctr_TGF_vs_siMTHFD2_TGF <- read.csv("CtrTGF_vs_siTGFB.csv", row.names=1)
+
+VP_Ctr_TGF_vs_siMTHFD2_TGF  <- EnhancedVolcano(Ctr_TGF_vs_siMTHFD2_TGF ,
+    lab = rownames(Ctr_TGF_vs_siMTHFD2_TGF ),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 16.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'Ctr_TGF_vs_siMTHFD2_TGFβ', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("VP_Ctr_TGF_vs_siMTHFD2_TGFB.png", plot = VP_Ctr_TGF_vs_siMTHFD2_TGF, width = plot_width, height = plot_height, limitsize = FALSE)
+
+#################
+
+
+Ctr_UT_vs_CTR_TGF <- read.csv("wt_vs_wtTGF.csv", row.names=1)
+
+VP_Ctr_UT_vs_CTR_TGF  <- EnhancedVolcano(Ctr_UT_vs_CTR_TGF,
+    lab = rownames(Ctr_UT_vs_CTR_TGF),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 16.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'Ctr_UT_vs_CTR_TGF', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("VP_Cont_UT_vs_Cont_TGFB.png", plot = VP_Ctr_UT_vs_CTR_TGF , width = plot_width, height = plot_height, limitsize = FALSE)
+
+#################
+
+
+siMTHFD2_UT_vs_siMTHFD2_TGF <- read.csv("si_vs_siTGF.csv", row.names=1)
+
+VP_siMTHFD2_UT_vs_siMTHFD2_TGF  <- EnhancedVolcano(siMTHFD2_UT_vs_siMTHFD2_TGF,
+    lab = rownames(siMTHFD2_UT_vs_siMTHFD2_TGF),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 16.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'siMTHFD2_UT_vs_siMTHFD2_TGFβ', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("VP_siMTHFD2_UT_vs_siMTHFD2_TGF.png", plot = VP_siMTHFD2_UT_vs_siMTHFD2_TGF, width = plot_width, height = plot_height, limitsize = FALSE)
+
+#################
+
+
+Ctr_UT_vs_siMTHFD2_TGF <- read.csv("wt_vs_siTGF.csv", row.names=1)
+
+VP_Ctr_UT_vs_siMTHFD2_TGF  <- EnhancedVolcano(Ctr_UT_vs_siMTHFD2_TGF,
+    lab = rownames(Ctr_UT_vs_siMTHFD2_TGF),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 16.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'Ctr_UT_vs_siMTHFD2_TGFβ', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("VP_Ctr_UT_vs_siMTHFD2_TGF.png", plot = VP_Ctr_UT_vs_siMTHFD2_TGF, width = plot_width, height = plot_height, limitsize = FALSE)
+
+#################
+
+
+siContTGF_vs_si11TGF <- read.csv("siContTGF_vs_si11TGF.csv", row.names=1)
+
+siContTGF_vs_si11TGF_VP  <- EnhancedVolcano(siContTGF_vs_si11TGF,
+    lab = rownames(siContTGF_vs_si11TGF),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 8.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'siContTGF_vs_si11TGF', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("siContTGF_vs_si11TGF_VP.png", plot = siContTGF_vs_si11TGF_VP, width = plot_width, height = plot_height, limitsize = FALSE)
+
+
+#################
+
+
+siContUT_vs_si9UT <- read.csv("siContUT_vs_si9UT.csv", row.names=1)
+
+siContUT_vs_si9UT_VP  <- EnhancedVolcano(siContUT_vs_si9UT,
+    lab = rownames(siContUT_vs_si9UT),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =1.0,
+    pointSize = 4.0,
+    labSize = 8.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'siContUT_vs_si9UT', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25) )
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("siContUT_vs_si9UT_VP.png", plot = siContUT_vs_si9UT_VP, width = plot_width, height = plot_height, limitsize = FALSE)
+
+
+#################
+
+
+siContUT_vs_si11TGF <- read.csv("siContUT_vs_si11TGF.csv", row.names=1)
+
+siContUT_vs_si11TGF_VP  <- EnhancedVolcano(siContUT_vs_si11TGF,
+    lab = rownames(siContUT_vs_si11TGF),
+    x = 'logFC',
+    y = 'PValue',
+    pCutoff = 0.01,
+    FCcutoff =2.0,
+    pointSize = 4.0,
+    labSize = 8.0,
+    col=c('black', 'blue', 'grey', 'red3'),
+    drawConnectors = TRUE,
+    widthConnectors = 0.5,
+    title = 'siContUT_vs_si11TGF', 
+    axisLabSize = 24, 
+    xlim = c(-10, 10),  # Set X-axis limits
+    ylim = c(0.0001, 25))
+
+
+
+# Set the desired width and height for the plot (in inches)
+plot_width <- 20
+plot_height <- 20
+
+# Save the plot using ggsave
+ggsave("siContUT_vs_si11TGF_VP.png", plot = siContUT_vs_si11TGF_VP, width = plot_width, height = plot_height, limitsize = FALSE)
+
+
+```
+
+
+
+
+
+
+
+
+```{r  Compare sets}
+
+dt1 <- decideTestsDGE(qlf.wt_wtTGF, p.value = 0.05)
+dt2 <- decideTestsDGE(qlf.wt_vs_siTGF, p.value = 0.05)
+
+
+# Get gene names
+genes <- rownames(dt1)
+
+# Upregulated
+up1 <- genes[dt1[,1] == 1]
+up2 <- genes[dt2[,1] == 1]
+
+# Downregulated
+down1 <- genes[dt1[,1] == -1]
+down2 <- genes[dt2[,1] == -1]
+
+
+# Shared upregulated genes
+shared_up <- intersect(up1, up2)
+
+# Shared downregulated genes
+shared_down <- intersect(down1, down2)
+
+# Upregulated in one but not the other
+only_up1 <- setdiff(up1, up2)
+only_up2 <- setdiff(up2, up1)
+
+# Downregulated in one but not the other
+only_down1 <- setdiff(down1, down2)
+only_down2 <- setdiff(down2, down1)
+
+
+
+write.csv(shared_up, "shared_upregulated_genes.csv", row.names = FALSE)
+write.csv(shared_down, "shared_downregulated_genes.csv", row.names = FALSE)
+write.csv(only_up1, "up_only_in_wt_wtTGF.csv", row.names = FALSE)
+write.csv(only_up2, "up_only_in_wt_vs_siTGF.csv", row.names = FALSE)
+write.csv(only_down1, "down_only_in_wt_wtTGF.csv", row.names = FALSE)
+write.csv(only_down2, "down_only_in_wt_vs_siTGF.csv", row.names = FALSE)
+
+
+
+#####################################
+# Create a combined set of all genes in either list
+all_genes_down <- union(down1, down2)
+
+# Build logical matrix: rows = genes, cols = sets
+venn_input_down <- cbind(
+  WT_TGF     = all_genes_down %in% down1,
+  siKD_TGF   = all_genes_down %in% down2
+)
+
+# Convert to counts
+venn_counts_down <- vennCounts(venn_input_down)
+
+# Plot
+vennDiagram(venn_counts_down, main = "downregulated Genes")
+
+
+
+#####################################
+# Create a combined set of all genes in either list
+all_genes <- union(up1, up2)
+
+# Build logical matrix: rows = genes, cols = sets
+venn_input <- cbind(
+  WT_TGF     = all_genes %in% up1,
+  siKD_TGF   = all_genes %in% up2
+)
+
+# Convert to counts
+venn_counts <- vennCounts(venn_input)
+
+# Plot
+vennDiagram(venn_counts, main = "upRegulated Genes")
+
+
+```
+
+
+
+
+```{r Sig GSEA SOFTWARE  RANKED FILE PREP sample}
+
+CtrTGF_vs_siTGF <- read.csv("~/siMTHFD2_Analysis/CtrTGF_vs_siTGFB.csv", row.names=1)
+
+
+Sig <- subset.data.frame(CtrTGF_vs_siTGF, abs(logFC) >= 0.5 & PValue<0.05)
+mtrx_Sig <- as.matrix(Sig)
+mtrx_Sig <- mtrx_Sig[, 1]
+Sorted_mtrx_Sig <-  sort(mtrx_Sig, decreasing = TRUE)
+write.table(Sorted_mtrx_Sig , sep = "\t", quote = FALSE, row.names = TRUE, col.names = FALSE,  "GSEA_gene_list.rnk") #saved for desktopGESAor other tools
+
+
+wt_wtTGF <- read.csv("~/siMTHFD2_Analysis/wt_wtTGF.csv")
+si_siTGF <- read.csv("~/siMTHFD2_Analysis/si_siTGF.csv")
+
+Sig_wt_wtTGF <- subset.data.frame(wt_wtTGF, abs(logFC) >= 1 & PValue<0.01)
+Sig_si_siTGF <- subset.data.frame(si_siTGF, abs(logFC) >= 1 & PValue<0.01)
+
+
+unique_Sig_wt_wtTGF <- anti_join(Sig_wt_wtTGF, Sig_si_siTGF, by = "Symbol")
+unique_Sig_si_siTGF <- anti_join(Sig_si_siTGF, Sig_wt_wtTGF, by = "Symbol")
+
+
+# Concatenate the unique rows from both data frames
+Sig_unique <- bind_rows(unique_Sig_wt_wtTGF, unique_Sig_si_siTGF)
+
+row.names(Sig_unique) <- Sig_unique[, 1]
+Sig_unique <- Sig_unique[, -1]
+
+mtrx_Sig_unique <- as.matrix(Sig_unique)
+mtrx_Sig_unique <- mtrx_Sig_unique[, 1]
+Sorted_mtrx_Sig_unique <-  sort(mtrx_Sig_unique , decreasing = TRUE)
+write.table(Sorted_mtrx_Sig_unique  , sep = "\t", quote = FALSE, row.names = TRUE, col.names = FALSE,  "GSEA_gene_list_Sig_unique.rnk") #saved for desktopGESAor other tools
+
+
+
+
+
+
+unique_Sig_si_siTGF <- anti_join(Sig_si_siTGF, Sig_wt_wtTGF, by = "Symbol")
+
+
+row.names(unique_Sig_si_siTGF) <- unique_Sig_si_siTGF[, 1]
+unique_Sig_si_siTGF <- unique_Sig_si_siTGF[, -1]
+
+
+
+
+#############3
+mtrx_unique_Sig_si_siTGF <- as.matrix(unique_Sig_si_siTGF)
+mtrx_unique_Sig_si_siTGF <- mtrx_unique_Sig_si_siTGF[, 1]
+Sorted_mtrx_unique_Sig_si_siTGF <-  sort(mtrx_unique_Sig_si_siTGF , decreasing = TRUE)
+write.table(Sorted_mtrx_unique_Sig_si_siTGF  , sep = "\t", quote = FALSE, row.names = TRUE, col.names = FALSE,  "GSEA_mtrx_unique_Sig_si_siTGF.rnk") #saved for desktopGESAor other tools
+
+
+
+unique_Sig_wt_wtTGF <- anti_join(Sig_wt_wtTGF, Sig_si_siTGF, by = "Symbol")
+
+
+row.names(unique_Sig_wt_wtTGF) <- unique_Sig_wt_wtTGF[, 1]
+unique_Sig_wt_wtTGF <- unique_Sig_wt_wtTGF[, -1]
+
+mtrx_unique_Sig_wt_wtTGF <- as.matrix(unique_Sig_wt_wtTGF)
+mtrx_unique_Sig_wt_wtTGF <- mtrx_unique_Sig_wt_wtTGF[, 1]
+Sorted_mtrx_unique_Sig_wt_wtTGF <-  sort(mtrx_unique_Sig_wt_wtTGF , decreasing = TRUE)
+write.table(Sorted_mtrx_unique_Sig_wt_wtTGFmtrx_unique_Sig_wt_wtTGF  , sep = "\t", quote = FALSE, row.names = TRUE, col.names = FALSE,  "GSEA_mtrx_unique_Sig_wt_wtTGF.rnk") #saved for desktopGESAor other tools
+
+
+
+
+```
+
+###########
+Your sorted matrix must look like this
+head(Sorted_mtrx_Sig )
+   Mgarp     Arg1      Ak4    Egln3    Rcor2    Bnip3 
+6.109408 4.472806 3.974477 3.856807 3.760947 3.182256 
+###########
+
+
+
+```{r GSEA}
+#GSEA
+#BiocManager::install("enrichplot")
+library(enrichplot)
+library(RColorBrewer)
+library(data.table)
+library(tidyverse)
+
+#BiocManager::install("clusterProfiler")
+library(clusterProfiler)
+library(dplyr)
+library(DOSE)
+require(DOSE)
+library(ggnewscale)
+library(ggplot2)
+library(fgsea)
+
+
+# SET THE DESIRED ORGANISM HERE
+organism = "org.Hs.eg.db" #for HUMAN
+#organism = "org.Mm.eg.db" #for Mouse
+#BiocManager::install(organism, character.only = TRUE)
+library(organism, character.only = TRUE)
+
+
+#BiocManager::install("msigdbr")
+library(msigdbr)
+
+h_df <- msigdbr(species = "Homo sapiens") #for HUMAN
+#m_df <- msigdbr(species = "Mus musculus") #for mouse
+head(h_df, 2) %>% as.data.frame
+h_t2g <- msigdbr(species = "Homo sapiens", category = "H") %>% 
+  dplyr::select(gs_name, gene_symbol)
+head(h_t2g)
+
+
+
+#msigdbr Hallmark GSEA
+
+
+msig <-GSEA(Sorted_mtrx_Sig_unique, TERM2GENE = h_t2g)
+  
+
+gse <- dotplot(msig  , showCategory=15, split=".sign", font = 16) + facet_grid(.~.sign)+ggtitle("Sig_wt_wtTGF& Sig_si_siTGF - intersect")
+
+
+cnet<- cnetplot(msig , showCategory = 15, color.params = list(foldChange =Sorted_mtrx_Sig), font.size = 32)+ggtitle("Sig_wt_wtTGF& Sig_si_siTGF - intersect")
+
+plot_width <- 10
+plot_height <- 10
+
+# Save the plot using ggsave
+ggsave("HM.png", plot = gse , width = 8, height = 8, limitsize = FALSE)
+
+ggsave("cnet.png", plot = cnet , width = 12, height = 12, limitsize = FALSE)
+
+
+#########
+
+#Gene Ontology GSEA
+
+GO <- gseGO(geneList=Sorted_mtrx_Sig_unique, 
+             ont ="BP", #ALL, BP, MF, CC
+             keyType = "SYMBOL", #ENSEMBL, SYMBOL,  UNIPROT,ENTREZID
+             nPerm = 10000, 
+             minGSSize = 2, 
+             maxGSSize = 500, 
+             pvalueCutoff = 0.05, 
+             verbose = TRUE, 
+             OrgDb = org.Hs.eg.db,# Human  org.Hs.eg.db
+             pAdjustMethod = "none")
+
+Sig_Unique_GOBP<- dotplot(GO  , showCategory=10, split=".sign") + facet_grid(.~.sign)+ggtitle("Sig_wt_wtTGF& Sig_si_siTGF-intersect")
+
+Sig_Unique_cnet_GOBP<- cnetplot(GO, showCategory = 10, foldChange=Sorted_mtrx_Sig, font.size = 32)+ggtitle("Sig_wt_wtTGF& Sig_si_siTGF-intersect")
+
+
+
+df_GO <- GO@result
+write_csv(df_GO , "CtrTGF_vs_siTGF_GOBP.csv")
+
+plot_width <- 10
+plot_height <- 15
+
+# Save the plot using ggsave
+ggsave("GO_Sig_wt_wtTGF& Sig_si_siTGF-intersect.png", plot = Sig_Unique_GOBP , width = 10, height = 10, limitsize = FALSE)
+
+ggsave("cnet_Sig_wt_wtTGF& Sig_si_siTGF-intersect.png", plot = Sig_Unique_cnet_GOBP , width = 12, height = 12, limitsize = FALSE)
+
+
+
+
+```
+
+DEG genes venn_counts_down or venn_counts_up
+
+
+
+```{r   Only_siKD_TGF  GSEAprep}
+
+Only_siKD_TGF <- c(only_up2, only_down2)
+
+wtTGF_vs_siTGF <- read.csv("~/siMTHFD2_Analysis/CtrTGF_vs_siTGFB.csv", row.names=1)
+
+
+Only_wtTGF_vs_siTGF  <- wtTGF_vs_siTGF[c(Only_siKD_TGF), ]
+mtrx_Sig_Only_siKD_TGF <- as.matrix(wtTGF_vs_siTGF)
+mtrx_Sig_Only_siKD_TGF <- mtrx_Sig_Only_siKD_TGF[, 1]
+Sorted_mtrx_Sig <-  sort(mtrx_Sig, decreasing = TRUE)
+write.table(Sorted_mtrx_Sig , sep = "\t", quote = FALSE, row.names = TRUE, col.names = FALSE,  "GSEA_gene_list.rnk") #saved for desktopGESAor other tools
+
+
+```
+
