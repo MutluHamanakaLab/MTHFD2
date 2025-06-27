@@ -158,6 +158,7 @@ design
 DEG <- estimateDisp(DEG,design) # sometimes DEG is called as NormData
 fit <- glmQLFit(DEG,design)
 
+# UT vs TGFb
 qlf.siContr_TGF<- glmQLFTest(fit, contrast=c(-1,1,0,0,0,0))
 topTags(qlf.siContr_TGF) #Coefficient: Coefficient:  -1*siContUT 1*siContTGF 
 summary(dt<-decideTestsDGE(qlf.siContr_TGF, p.value = 0.01))
@@ -169,14 +170,26 @@ summary(dt<-decideTestsDGE(qlf.siContr_TGF, p.value = 0.01))
 
 write.csv(qlf.siContr_TGF, "./PATH/TO/DIRECTORY/CtrUT_vs_CtrTGFB.csv")
 
+# siControl TGFb vs siMTHFD2 TGFb
+qlf.ctrTGF_siTGF<- glmQLFTest(fit, contrast=c(0,-1,0,1))
+topTags(qlf.ctrTGF_siTGF) #Coefficient: -1*Ctr_TGF 1*siKD_TGF 
+summary(dt<-decideTestsDGE(qlf.ctrTGF_siTGF, p.value = 0.05))
+
+#       -1*siContUT 1*siContTGF
+#Down             1
+#NotSig            8803
+#Up              0
+
+write.csv(qlf.ctrTGF_siTGF, "./PATH/TO/DIRECTORY/CtrTGF_vs_siTGFB.csv") 
+
 # ---------
 # Volcano Plot
 # Load data
-CtrUT_vs_CtrTGFB <- read.csv("./PATH/TO/DIRECTORY/CtrUT_vs_CtrTGFB.csv", row.names=1)
+Ctr_TGF_vs_siMTHFD2_TGF <- read.csv("./PATH/TO/DIRECTORY/CtrTGF_vs_siTGFB.csv", row.names=1)
 
-# Figure 2F
-CtrUT_vs_CtrTGFB_VP  <- EnhancedVolcano(CtrUT_vs_CtrTGFB,
-    lab = rownames(CtrUT_vs_CtrTGFB),
+# Figure 2G
+VP_Ctr_TGF_vs_siMTHFD2_TGF  <- EnhancedVolcano(Ctr_TGF_vs_siMTHFD2_TGF ,
+    lab = rownames(Ctr_TGF_vs_siMTHFD2_TGF ),
     x = 'logFC',
     y = 'PValue',
     pCutoff = 0.01,
@@ -186,7 +199,7 @@ CtrUT_vs_CtrTGFB_VP  <- EnhancedVolcano(CtrUT_vs_CtrTGFB,
     col=c('black', 'blue', 'grey', 'red3'),
     drawConnectors = TRUE,
     widthConnectors = 0.5,
-    title = 'CtrUT_vs_CtrTGFB', 
+    title = 'Ctr_TGF_vs_siMTHFD2_TGFβ', 
     axisLabSize = 24, 
     xlim = c(-10, 10),  # Set X-axis limits
     ylim = c(0.0001, 25))
@@ -196,8 +209,7 @@ plot_width <- 20
 plot_height <- 20
 
 # Save the plot using ggsave
-ggsave("./PATH/TO/DIRECTORY/CtrUT_vs_CtrTGFB_VP.png", plot = CtrUT_vs_CtrTGFB_VP, width = plot_width, height = plot_height, limitsize = FALSE)
-
+ggsave("VP_Ctr_TGF_vs_siMTHFD2_TGFB.png", plot = VP_Ctr_TGF_vs_siMTHFD2_TGF, width = plot_width, height = plot_height, limitsize = FALSE)
 
 # ---------
 # Heatmap
