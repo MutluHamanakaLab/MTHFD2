@@ -266,7 +266,7 @@ newnames <- lapply(
   rownames(sig.zscore.mat),
   function(x) bquote(italic(.(x)))) ## italicizes
 
-# Figure 2G
+# Figure 2F
 heatmap_all <- pheatmap(sig.zscore.mat,
                          annotation_col = heat.annotation, 
                          cluster_cols = FALSE,
