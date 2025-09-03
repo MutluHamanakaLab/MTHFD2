@@ -37,13 +37,14 @@ ggsave("./PATH/TO/DIRECTORY/scDimPlot_Level4_new_diff_cols.png", dimplot, width 
 
 # ---------
 # Feature Plot
-# Figure 5I S16?
+# Figure 5I / Figure S18B
 DefaultAssay(level4.seurat_L) <- "RNA"
 for (gene in MTHFD2_paper_h) {
   featureplots <- FeaturePlot(level4.seurat_L, features = gene, order = T)
   ggsave(paste0("./PATH/TO/DIRECTORY/scFeaturePlots_Level4_paper_RNA_", gene,".png"), featureplots, width = 3.5, height = 3.5)
 }
 
+# Figure S18A
 # Create a marker list
 markers <- c("SCN7A", "AOC3", "FMO2", "CCL2", "SFRP2", "GSN", "CTHRC1", "POSTN", "COL1A1")
 
