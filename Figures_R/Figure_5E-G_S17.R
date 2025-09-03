@@ -76,9 +76,9 @@ MTHFD2_paper_h <- c("MTHFD2" ,"ALDH1L2", "MTHFD1L", "MTHFD1")
 # Figure S17B
 plot <- DotPlot(level3.seurat_L, features = MTHFD2_paper_h, group.by = "condition") + RotatedAxis()
 W <- length(MTHFD2_paper_h) * 1.3
-H <- length(unique(level3.seurat_L@active.ident)) * 0.6
+H <- length(unique(level3.seurat_L@active.ident)) * 0.9
 ggsave("./PATH/TO/DIRECTORY/scDotPlot_level3_condition_MTHFD2_paper_TALL.png", plot, width = W, height = H)
-H <- length(unique(level3.seurat_L@active.ident)) * 0.25
+H <- length(unique(level3.seurat_L@active.ident)) * 0.375
 ggsave("./PATH/TO/DIRECTORY/scDotPlot_level3_condition_MTHFD2_paper_LOW.png", plot, width = W, height = H)
 
 # Figure 5G
@@ -96,6 +96,9 @@ for (gene in MTHFD2_paper_h) {
   plot <- FeaturePlot(level3.seurat_L, features = gene, order = T)
   ggsave(paste0("./PATH/TO/DIRECTORY/scFeaturePlot_Level3_",gene,"_RNA_Norm.png"), plot, width = 10, height = 6, units = "cm")
 }
+
+# Organize Condition factor for plot
+level3.seurat_L$condition <- factor(level3.seurat_L$condition, levels = c("Control", "PF"))
 
 # Figure S17C
 for (gene in MTHFD2_paper_h) {
