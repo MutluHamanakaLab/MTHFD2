@@ -32,7 +32,7 @@ ggsave("./PATH/TO/DIRECTORY/scDotPlot_Level4_new_MTHFD2_RNA_LOW.png", scDotplot,
 # Figure 5H
 dimplot <- DimPlot(level4.seurat_L, label = F, cols = "alphabet2") + NoLegend()
 ggsave("./PATH/TO/DIRECTORY/scDimPlot_Level4_new_noLegend_diff_cols.png", dimplot, width = 3.5, height = 3.5)
-dimplot <- DimPlot(level4.seurat_L, label = F)
+dimplot <- DimPlot(level4.seurat_L, label = F, cols = "alphabet2")
 ggsave("./PATH/TO/DIRECTORY/scDimPlot_Level4_new_diff_cols.png", dimplot, width = 5, height = 3.5)
 
 # ---------
