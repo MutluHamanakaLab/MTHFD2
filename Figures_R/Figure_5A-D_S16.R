@@ -72,7 +72,7 @@ ggsave("./PATH/TO/DIRECTORY/DimPlot_Day0_cut.png", plot, width = plot_width, hei
 # ---------------
 # Feature Plots
 # Create a genes list
-# Figure S16A
+# Figure 5B / S16A
 MTHFD2_paper_m <- c("Mthfd2" ,"Aldh1l2", "Mthfd1l", "Mthfd1")
 
 # Set plot dimensions
@@ -105,6 +105,7 @@ for (gene in MTHFD2_paper_m) {
 # ---------
 # Dot Plot
 # Figure 5C
+TdTomato.fibroblast$Day <- factor(TdTomato.fibroblast$Day, levels = c("Day21", "Day14", "Day7", "Day0"))
 plot <- DotPlot(TdTomato.fibroblast, features = MTHFD2_paper_m, group.by = "Day") + RotatedAxis()
 W <- length(MTHFD2_paper_m) * 1
 H <- length(unique(TdTomato.fibroblast@active.ident)) * 1.2
@@ -113,6 +114,7 @@ H <- length(unique(TdTomato.fibroblast@active.ident)) * 0.6
 ggsave("./PATH/TO/DIRECTORY/scDotPlot_TdTomato_MTHFD2_paper_Days_LOW.png", plot, width = W, height = H)
 
 # Figure 5D
+Idents(TdTomato.fibroblast) <- factor(Idents(TdTomato.fibroblast), levels = c("Fibrotic", "Inflammatory", "Alveolar"))
 scDotplot <- DotPlot(TdTomato.fibroblast, features = MTHFD2_paper_m) + RotatedAxis()
 H <- length(unique(TdTomato.fibroblast@active.ident)) *1.4
 ggsave("./PATH/TO/DIRECTORY/scDotPlot_Tsukui_MTHFD2_TALL.png", scDotplot, width = 4.5, height = H)
