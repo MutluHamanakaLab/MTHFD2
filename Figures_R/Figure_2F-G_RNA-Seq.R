@@ -209,7 +209,7 @@ plot_width <- 20
 plot_height <- 20
 
 # Save the plot using ggsave
-ggsave("VP_Ctr_TGF_vs_siMTHFD2_TGFB.png", plot = VP_Ctr_TGF_vs_siMTHFD2_TGF, width = plot_width, height = plot_height, limitsize = FALSE)
+ggsave("./PATH/TO/DIRECTORY/VP_Ctr_TGF_vs_siMTHFD2_TGFB.png", plot = VP_Ctr_TGF_vs_siMTHFD2_TGF, width = plot_width, height = plot_height, limitsize = FALSE)
 
 # ---------
 # Heatmap
