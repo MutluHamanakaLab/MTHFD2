@@ -1,4 +1,4 @@
-# Mitochondrial One-Carbon Metabolism is Required for TGF-β-Induced Glycine Synthesis and Collagen Protein Production
+# Mitochondrial One-Carbon Metabolism is Required for TGF-β-Induced Glycine Synthesis and Fibrotic Responses
 PAPER LINK
 
 # Summary
