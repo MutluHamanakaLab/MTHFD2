@@ -1,0 +1,541 @@
+---
+title: "MicroArrayCorrelation"
+output: html_document
+date: "2024-09-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readr)
+library(stringr)
+library(dplyr)
+library(data.table)
+library(tidyverse)
+library(dbplyr)
+library(RColorBrewer)
+library(ggplot2)
+library(readxl)
+
+```
+
+
+
+
+```{r}
+# Sample list of genes to search for
+
+genename_IDnumber <- read_excel("GPL6244-17930_genename_IDnumber.xlsx")
+
+# Get all sheet names
+sheet_names <- excel_sheets("GSE32537_ID_reads.xlsx")
+
+# Read all sheets into a list
+GSE32537_Matrix_R <- lapply(sheet_names, function(sheet) {
+  read_excel("GSE32537_ID_reads.xlsx", sheet = sheet)
+})
+
+names(GSE32537_Matrix_R) <- sheet_names
+
+gene_ID_GSE32537_Matrix <- GSE32537_Matrix_R[["GSE32537_series_matrix"]]
+
+
+# Convert both ID columns to character type
+genename_IDnumber$ID <- as.numeric(genename_IDnumber$ID)
+gene_ID_GSE32537_Matrix$ID <- as.numeric(gene_ID_GSE32537_Matrix$ID)
+
+# Perform the left join
+
+DataforCorrelation <- left_join(genename_IDnumber, gene_ID_GSE32537_Matrix, by="ID")
+
+
+
+# View the result
+write.csv(DataforCorrelation, "DataforCorrelation.csv")
+
+
+
+Meta_data <- GSE32537_Matrix_R[["Meta_data"]]
+
+
+# Define the two data frames
+Correl_gene <- DataforCorrelation  # Data frame with multiple columns to correlate
+
+Correl_gene <- na.omit(Correl_gene)
+
+
+#remove gene Ids
+Correl_gene<- Correl_gene[,-1]
+#transpose
+Correl_gene_t <- as.data.frame(t(Correl_gene))
+
+new_colnames <- as.character(Correl_gene_t[1, ])
+
+Correl_gene_t<- Correl_gene_t[-1,]
+colnames(Correl_gene_t) <- new_colnames
+Correl_gene_t <- cbind(geo_accession = rownames(Correl_gene_t), Correl_gene_t)
+rownames(Correl_gene_t) <- NULL 
+Correl_exp <- Correl_gene_t[, colSums(is.na(Correl_gene_t)) == 0]
+
+library(dplyr)
+
+Meta_FVC_PBD <- Meta_data %>% dplyr::select(geo_accession, FVC_PBD) 
+Meta_DLCO <- Meta_data %>% dplyr::select(geo_accession, DLCO)
+
+#remove row after 167 for control smaples
+Meta_Corr_FVC <- Meta_FVC_PBD[1:167,]
+Meta_Corr_DLCO <- Meta_DLCO[1:167,]
+
+# Merge df1 and df2 by geo_accession
+
+merged_corr_FVC <- merge(Meta_Corr_FVC , Correl_exp , by = "geo_accession")
+merged_corr_FVC_80 <- merged_corr_FVC[merged_corr_FVC$FVC_PBD < 80, ]
+
+
+merged_corr_DLCO <- merge(Meta_Corr_DLCO , Correl_exp , by = "geo_accession")
+merged_corr_DLCO_80 <- merged_corr_DLCO[merged_corr_DLCO$DLCO < 80, ]
+
+
+# Perform Pearson correlation analysis between 'value1' and each gene in the dataframe
+# Ensure all gene columns are numeric within the sapply loop
+correlations_FVC <- sapply(merged_corr_FVC[, 2:ncol(merged_corr_FVC)], function(gene_values) {
+  cor.test(merged_corr_FVC$FVC_PBD, as.numeric(gene_values), method = "pearson", use = "complete.obs")
+})
+
+
+library(tibble)
+
+
+write.csv(correlations_FVC, "correlations_FVC.csv", row.names = FALSE)
+
+
+
+# Perform Pearson correlation analysis between 'value1' and each gene in the dataframe
+# Ensure all gene columns are numeric within the sapply loop
+correlations_DLCO <- sapply(merged_corr_DLCO[, 2:ncol(merged_corr_DLCO)], function(gene_values) {
+  cor.test(merged_corr_DLCO$DLCO, as.numeric(gene_values), method = "pearson", use = "complete.obs")
+})
+
+
+write.csv(correlations_DLCO, "correlations_DLCO.csv", row.names = FALSE)
+
+```
+
+
+
+```{r adjust p}
+
+# Get all sheet names
+sheet_names_corr <- excel_sheets("correlations_ALL_DLCO_FVC.xlsx")
+
+# Read all sheets into a list
+correlations_ALL_DLCO_FVC <- lapply(sheet_names_corr, function(sheet) {
+  read_excel("correlations_ALL_DLCO_FVC.xlsx", sheet = sheet)
+})
+
+names(correlations_ALL_DLCO_FVC) <- sheet_names_corr
+
+DLCO_cor <- as.data.frame(correlations_ALL_DLCO_FVC[["DLCO"]])
+FVC_cor <- as.data.frame(correlations_ALL_DLCO_FVC[["Sheet2"]])
+
+
+# Apply the BH adjustment and store the results in a new column 'adjusted_p_value'
+DLCO_cor$adjusted_p_value <- p.adjust(DLCO_cor$p.value, method = "BH")
+
+# View the updated data frame
+head(DLCO_cor)
+
+DLCO_cor_subset <- DLCO_cor[DLCO_cor$adjusted_p_value <= 0.05, ]
+
+# write the subsetted data frame
+
+write.csv(DLCO_cor_subset, "DLCO_cor_subset.csv")
+
+#######
+FVC_cor$adjusted_p_value <- p.adjust(FVC_cor$p.value, method = "BH")
+
+# View the updated data frame
+head(FVC_cor)
+
+FVC_cor_subset <- FVC_cor[FVC_cor$adjusted_p_value <= 0.05, ]
+
+# write the subsetted data frame
+
+write.csv(FVC_cor_subset, "FVC_cor_subset.csv")
+
+
+```
+
+
+
+```{r}
+# Load ggplot2 library
+library(ggplot2)
+
+
+
+# Filter genes based on correlation criteria
+selected_genes <- correlations_df$Gene[correlations_df$Correlation > 0.4 | correlations_df$Correlation < -0.4]
+
+
+selected_genes_FVC <- c("MTHFD2","COL1A1")
+
+
+selected_genes_DLCO <- c("MTHFD2","COL1A1")
+
+
+
+correlations_clean <- correlations[!is.na(names(correlations))]
+
+merged_corr_FVC <- merge(Meta_Corr_FVC , Correl_exp, by = "geo_accession")
+#merged_corr_FVC <- merged_corr_FVC[!is.na(names(merged_corr_FVC))]
+merged_corr_DLCO <- merge(Meta_Corr_DLCO , Correl_exp , by = "geo_accession")
+#merged_corr_DLCO <- merged_corr_DLCO[!is.na(names(merged_corr_DLCO))]
+
+
+merged_corr_FVC <- merge(Meta_Corr_FVC , Correl_exp , by = "geo_accession")
+merged_corr_FVC_80 <- merged_corr_FVC[merged_corr_FVC$FVC_PBD < 80, ]
+
+
+merged_corr_DLCO <- merge(Meta_Corr_DLCO , Correl_exp , by = "geo_accession")
+merged_corr_DLCO_80 <- merged_corr_DLCO[merged_corr_DLCO$DLCO < 80, ]
+
+
+
+
+
+library(ggplot2)
+
+
+for (gene in selected_genes_DLCO) {
+  # Ensure the gene variable is numeric
+  merged_corr_DLCO[[gene]] <- as.numeric(merged_corr_DLCO[[gene]])
+  
+  # Calculate dynamic x-axis limits
+  gene_min <- min(merged_corr_DLCO[[gene]], na.rm = TRUE) - 0.5
+  gene_max <- max(merged_corr_DLCO[[gene]], na.rm = TRUE) + 0.5
+  
+  p <- ggplot(data = merged_corr_DLCO, aes(x = .data[[gene]], y = DLCO)) +
+    geom_point(color = "black") +  # Points in black
+    geom_smooth(method = "lm", se = FALSE, color = "red") +  # Trend line in red
+    labs(
+      title = gene,  # Title as gene name
+      y = "DLCO",  # Label y-axis with units
+      x = paste(gene)  # Label x-axis with units
+    ) +
+    scale_x_continuous(limits = c(gene_min, gene_max)) +  # Set dynamic x-axis limits
+    theme_minimal(base_size = 15) +  # Minimal theme for no background
+    theme(
+      panel.grid.major = element_line(color = "gray", linetype = "dotted"),  # Horizontal and vertical grid lines
+      panel.grid.minor = element_blank(),
+      panel.border = element_blank(),  # No borders
+      axis.line = element_line(color = "black")  # Include only horizontal and vertical axis lines
+    ) +
+    theme(axis.text.y = element_text(), axis.ticks.y = element_line())
+  
+ 
+  ggsave(filename = paste0("DLCO_vs_", gene, ".png"), plot = p, width = 8, height = 6, dpi = 300)
+}
+
+
+for (gene in selected_genes_FVC) {
+  # Ensure the gene variable is numeric
+  merged_corr_FVC[[gene]] <- as.numeric(merged_corr_FVC[[gene]])
+  
+ 
+  gene_min <- min(merged_corr_FVC[[gene]], na.rm = TRUE) - 0.5
+  gene_max <- max(merged_corr_FVC[[gene]], na.rm = TRUE) + 0.5
+  
+  p <- ggplot(data = merged_corr_FVC, aes(x = .data[[gene]], y = FVC_PBD)) +
+    geom_point(color = "black") +  # Points in black
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +  # Trend line in red
+    labs(
+      title = gene,  # Title as gene name
+      y = "FVC_PBD",  # Label y-axis with units
+      x = paste(gene)  # Label x-axis with units
+    ) +
+    scale_x_continuous(limits = c(gene_min, gene_max)) +  # Set dynamic x-axis limits
+    theme_minimal(base_size = 15) +  # Minimal theme for no background
+    theme(
+      panel.grid.major = element_line(color = "gray", linetype = "dotted"),  # Horizontal and vertical grid lines
+      panel.grid.minor = element_blank(),
+      panel.border = element_blank(),  # No borders
+      axis.line = element_line(color = "black")  # Include only horizontal and vertical axis lines
+    ) +
+    theme(axis.text.y = element_text(), axis.ticks.y = element_line())
+  
+
+  ggsave(filename = paste0("FVC_PBD_vs_", gene, ".png"), plot = p, width = 8, height = 6, dpi = 300)
+}
+
+
+
+
+
+```
+
+
+
+```{r adjust below80}
+
+# Perform Pearson correlation analysis between 'value1' and each gene in the dataframe
+
+correlations_FVC_80 <- sapply(merged_corr_FVC_80[, 2:ncol(merged_corr_FVC_80)], function(gene_values) {
+  cor.test(merged_corr_FVC_80$FVC_PBD, as.numeric(gene_values), method = "pearson", use = "complete.obs")
+})
+
+
+library(tibble)
+
+
+write.csv(correlations_FVC_80, "correlations_FVC_80.csv", row.names = FALSE)
+
+
+
+# Perform Pearson correlation analysis between 'value1' and each gene in the dataframe
+# Ensure all gene columns are numeric within the sapply loop
+correlations_DLCO_80 <- sapply(merged_corr_DLCO_80[, 2:ncol(merged_corr_DLCO_80)], function(gene_values) {
+  cor.test(merged_corr_DLCO_80$DLCO, as.numeric(gene_values), method = "pearson", use = "complete.obs")
+})
+
+
+write.csv(correlations_DLCO_80, "correlations_DLCO_80.csv", row.names = FALSE)
+
+
+
+sheet_names_corr_80 <- excel_sheets("correlations_ALL_80_DLCO_FVC.xlsx")
+
+correlations_ALL_DLCO_80_FVC_80 <- lapply(sheet_names_corr_80, function(sheet) {
+  read_excel("correlations_ALL_80_DLCO_FVC.xlsx", sheet = sheet)
+})
+
+names(correlations_ALL_DLCO_80_FVC_80) <- sheet_names_corr_80
+
+DLCO_80_cor <- as.data.frame(correlations_ALL_DLCO_80_FVC_80[["DLCO_80"]])
+FVC_80_cor <- as.data.frame(correlations_ALL_DLCO_80_FVC_80[["FVC_80"]])
+
+
+
+
+DLCO_80_cor$adjusted_p_value <- p.adjust(DLCO_80_cor$p.value, method = "BH")
+
+# View the updated data frame
+head(DLCO_80_cor)
+
+DLCO_80_cor_subset <- DLCO_80_cor[DLCO_80_cor$adjusted_p_value <= 0.05, ]
+
+# write the subsetted data frame
+
+write.csv(DLCO_80_cor_subset, "DLCO_80_cor_subset.csv")
+
+#######
+FVC_80_cor$adjusted_p_value <- p.adjust(FVC_80_cor$p.value, method = "BH")
+
+# View the updated data frame
+head(FVC_80_cor)
+
+FVC_80_cor_subset <- FVC_80_cor[FVC_80_cor$adjusted_p_value <= 0.01, ]
+
+# write the subsetted data frame
+
+write.csv(FVC_80_cor_subset, "FVC_80_cor_subset.csv")
+
+selected_genes_FVC_80 <- c("MTHFD2","COL1A1")
+
+
+selected_genes_DLCO_80 <- c("MTHFD2","COL1A1")
+
+selected_genes_FVC_DLCO_80 <- c("MTHFD2","COL1A1")
+
+
+merged_corr_FVC_80 <- merge(Meta_Corr_FVC_80 , Correl_exp, by = "geo_accession")
+#merged_corr_FVC_80 <- merged_corr_FVC_80[!is.na(names(merged_corr_FVC_80))]
+merged_corr_DLCO_80 <- merge(Meta_Corr_DLCO_80 , Correl_exp , by = "geo_accession")
+#merged_corr_DLCO_80 <- merged_corr_DLCO_80[!is.na(names(merged_corr_DLCO_80))]
+
+
+library(ggplot2)
+
+
+for (gene in selected_genes_DLCO_80) {
+  
+  merged_corr_DLCO_80[[gene]] <- as.numeric(merged_corr_DLCO_80[[gene]])
+  
+  
+  gene_min <- min(merged_corr_DLCO_80[[gene]], na.rm = TRUE) - 0.5
+  gene_max <- max(merged_corr_DLCO_80[[gene]], na.rm = TRUE) + 0.5
+  
+  p <- ggplot(data = merged_corr_DLCO_80, aes(x = .data[[gene]], y = DLCO)) +
+    geom_point(color = "black") +  # Points in black
+    geom_smooth(method = "lm", se = FALSE, color = "red") +  # Trend line in red
+    labs(
+      title = gene,  # Title as gene name
+      y = "DLCO",  # Label y-axis with units
+      x = paste(gene)  # Label x-axis with units
+    ) +
+    scale_x_continuous(limits = c(gene_min, gene_max)) +  # Set dynamic x-axis limits
+    theme_minimal(base_size = 15) +  # Minimal theme for no background
+    theme(
+      panel.grid.major = element_line(color = "gray", linetype = "dotted"),  # Horizontal and vertical grid lines
+      panel.grid.minor = element_blank(),
+      panel.border = element_blank(),  # No borders
+      axis.line = element_line(color = "black")  # Include only horizontal and vertical axis lines
+    ) +
+    theme(axis.text.y = element_text(), axis.ticks.y = element_line())
+  
+  # Save the plot as a PNG file with the gene name in the file name
+  ggsave(filename = paste0("DLCO_80_vs_", gene, ".png"), plot = p, width = 8, height = 6, dpi = 300)
+}
+
+for (gene in selected_genes_FVC_DLCO_80) {
+  # Ensure the gene variable is numeric
+  merged_corr_FVC_80[[gene]] <- as.numeric(merged_corr_FVC_80[[gene]])
+  
+  # Calculate dynamic x-axis limits
+  gene_min <- min(merged_corr_FVC_80[[gene]], na.rm = TRUE) - 0.5
+  gene_max <- max(merged_corr_FVC_80[[gene]], na.rm = TRUE) + 0.5
+  
+  p <- ggplot(data = merged_corr_FVC_80, aes(x = .data[[gene]], y = FVC_PBD)) +
+    geom_point(color = "black") +  # Points in black
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +  # Trend line in red
+    labs(
+      title = gene,  # Title as gene name
+      y = "FVC_PBD",  # Label y-axis with units
+      x = paste(gene)  # Label x-axis with units
+    ) +
+    scale_x_continuous(limits = c(gene_min, gene_max)) +  # Set dynamic x-axis limits
+    theme_minimal(base_size = 15) +  # Minimal theme for no background
+    theme(
+      panel.grid.major = element_line(color = "gray", linetype = "dotted"),  # Horizontal and vertical grid lines
+      panel.grid.minor = element_blank(),
+      panel.border = element_blank(),  # No borders
+      axis.line = element_line(color = "black")  # Include only horizontal and vertical axis lines
+    ) +
+    theme(axis.text.y = element_text(), axis.ticks.y = element_line())
+  
+  # Save the plot as a PNG file with the gene name in the file name
+  ggsave(filename = paste0("FVC_80_vs_", gene, ".png"), plot = p, width = 8, height = 6, dpi = 300)
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+
+
+# Initialize a list to store plots
+plot_list <- list()
+
+# Loop through each selected gene and create a plot
+for (gene in selected_genes_FVC) {
+  p <- ggplot(data = merged_corr, aes(x = .data[[gene]], y = FVC_PBD)) +
+    geom_point() +
+    labs(title = paste("Scatter plot of FVC_PBD vs", gene),
+         y = "FVC_PBD",
+         x = gene) +
+    theme_minimal() +
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
+    theme(axis.text.y = element_blank(),
+          axis.ticks.y = element_blank())
+  
+  # Add each plot to the list
+  plot_list[[length(plot_list) + 1]] <- p
+}
+
+
+# Loop through each selected gene and create a plot
+
+for (gene in selected_genes_DLCO) {
+  p <- ggplot(data = merged_corr_DLCO, aes(x = .data[[gene]], y = DLCO)) +
+    geom_point() +
+    labs(title = paste("Scatter plot of DLCO vs", gene),
+         y = "DLCO",
+         x = gene) +
+    theme_minimal() +
+    geom_smooth(method = "lm", se = FALSE, color = "red") +  # Regression line in red
+    theme(axis.text.y = element_blank(),
+          axis.ticks.y = element_blank())
+  
+  # Add each plot to the list
+  plot_list[[length(plot_list) + 1]] <- p
+}
+
+
+
+# Export each plot as a PNG file
+for (i in seq_along(plot_list)) {
+  # Define the file name, using the gene name for clarity
+  file_name <- paste0("scatter_plot_", selected_genes_FVC[i], ".png")
+  
+  # Save the plot as a PNG file with the specified file name
+  ggsave(filename = file_name, plot = plot_list[[i]], width = 6, height = 4, dpi = 300)
+}
+
+
+
+
+# Open a PDF device to save the plots
+pdf("gene_plots_FVC_PBD.pdf", width = 8.5, height = 11)  # Adjust size as needed for 4 plots/page
+
+# Loop through the plots in chunks of four
+for (i in seq(1, length(plot_list), by = 4)) {
+  # Select the current chunk of up to four plots
+  plots_to_display <- plot_list[i:min(i+3, length(plot_list))]
+  
+  # Calculate the number of rows and columns needed for this chunk
+  num_plots <- length(plots_to_display)
+  ncol <- ifelse(num_plots >= 2, 2, 1)
+  nrow <- ceiling(num_plots / 2)
+  
+  # Arrange and print the plots on one page
+  grid.arrange(grobs = plots_to_display, ncol = ncol, nrow = nrow)
+}
+
+# Close the PDF device
+dev.off()
+
+
+
+# Open a PDF device to save the plots
+pdf("gene_plots_DLCO.pdf", width = 8.5, height = 11)  # Adjust size as needed for 4 plots/page
+
+# Loop through the plots in chunks of four
+for (i in seq(1, length(plot_list), by = 4)) {
+  # Select the current chunk of up to four plots
+  plots_to_display <- plot_list[i:min(i+3, length(plot_list))]
+  
+  # Calculate the number of rows and columns needed for this chunk
+  num_plots <- length(plots_to_display)
+  ncol <- ifelse(num_plots >= 2, 2, 1)
+  nrow <- ceiling(num_plots / 2)
+  
+  # Arrange and print the plots on one page
+  grid.arrange(grobs = plots_to_display, ncol = ncol, nrow = nrow)
+}
+
+# Close the PDF device
+dev.off()
+
+```
