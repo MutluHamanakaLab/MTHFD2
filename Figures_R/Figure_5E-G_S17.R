@@ -55,7 +55,7 @@ ggsave("./PATH/TO/DIRECTORY/scDimplot_level3_noLegend_diff_cols_NoLegend.png",sc
 scDimplot <- DimPlot(level3.seurat_L,cols = "alphabet")
 ggsave("./PATH/TO/DIRECTORY/scDimplot_level3_Legend_diff_cols_Legend.png",scDimplot, width = 15, height = 6, units = "cm")
 
-# Figure S15A
+# Figure S17A
 scDimplot <- DimPlot(level3.seurat_L, split.by = "condition", cols = "alphabet")+ xlim(-8,8) + ylim(-5,5)
 ggsave("./PATH/TO/DIRECTORY/scDimplot_level3_split_Legend_diff_cols.png",scDimplot, width = 25, height = 6, units = "cm")
 
@@ -73,7 +73,7 @@ level3.seurat_L$condition <- factor(level3.seurat_L$condition, levels = c("PF", 
 # Define Gene list
 MTHFD2_paper_h <- c("MTHFD2" ,"ALDH1L2", "MTHFD1L", "MTHFD1")
 
-# Figure S15B
+# Figure S17B
 plot <- DotPlot(level3.seurat_L, features = MTHFD2_paper_h, group.by = "condition") + RotatedAxis()
 W <- length(MTHFD2_paper_h) * 1.3
 H <- length(unique(level3.seurat_L@active.ident)) * 0.6
@@ -91,13 +91,13 @@ ggsave("./PATH/TO/DIRECTORY/scDotPlot_Level3_MTHFD2_paper_RNA_Norm_LOW.png", wid
 
 # ---
 # Feature Plot
-# Figure 5F | ? 
+# Figure 5F
 for (gene in MTHFD2_paper_h) {
   plot <- FeaturePlot(level3.seurat_L, features = gene, order = T)
   ggsave(paste0("./PATH/TO/DIRECTORY/scFeaturePlot_Level3_",gene,"_RNA_Norm.png"), plot, width = 10, height = 6, units = "cm")
 }
 
-# Figure S15C
+# Figure S17C
 for (gene in MTHFD2_paper_h) {
   plot <- FeaturePlot_scCustom(level3.seurat_L, split.by = "condition", features = gene, order = T, colors_use = c("lightgrey", "blue"))
   ggsave(paste0("./PATH/TO/DIRECTORY/scFeaturePlot_level3_split_", gene,"_RNA_Norm.png"),
