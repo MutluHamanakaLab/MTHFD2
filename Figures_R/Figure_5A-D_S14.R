@@ -40,6 +40,7 @@ days_labels <- c("Day0", "Day7", "Day14", "Day21")
 # ---------------
 # Dim Plots
 # Visualize UMAP for each subset and save the plots
+# Figure S16A
 for (i in seq_along(days_list)) {
   days_list[[i]] <- NormalizeData(days_list[[i]])
   days_list[[i]] <- ScaleData(days_list[[i]])
@@ -71,6 +72,7 @@ ggsave("./PATH/TO/DIRECTORY/DimPlot_Day0_cut.png", plot, width = plot_width, hei
 # ---------------
 # Feature Plots
 # Create a genes list
+# Figure S16A
 MTHFD2_paper_m <- c("Mthfd2" ,"Aldh1l2", "Mthfd1l", "Mthfd1")
 
 # Set plot dimensions
@@ -86,7 +88,7 @@ for (day in names(days)) {
 
 # Set uniform x-axis tic
 for (gene in MTHFD2_paper_m) {
-  plot <- FeaturePlot(TdTomato.D7, features = gene, order = T) + ylim(-5, 8) + xlim(NA, 5.0)
+  plot <- FeaturePlot(TdTomato.D7, features = gene, order = T) + ylim(-5, 8) + xlim(NA, 5.0) + scale_x_continuous(breaks = c(-2.5, 0.0, 2.5, 5.0))
 ggsave(paste0("./PATH/TO/DIRECTORY/scFeaturePlot_Day7_",gene,"_cut.png"), plot, width = plot_width, height = plot_height)
 }
 
@@ -117,7 +119,7 @@ ggsave("./PATH/TO/DIRECTORY/scDotPlot_Tsukui_MTHFD2_TALL.png", scDotplot, width 
 H <- length(unique(level4.seurat_3@active.ident)) *0.7
 ggsave("./PATH/TO/DIRECTORY/scDotPlot_Tsukui_MTHFD2_LOW.png", scDotplot, width = 4.5, height = H)
 
-# Figure S14B
+# Figure S16B
 W <- length(MTHFD2_paper_m) * 1.1
 
 for (day in names(days)) {
